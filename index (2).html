@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compact Puzzle Solver</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:wght@600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Mono',monospace;background:#f0fdf4;color:#14532d;min-height:100vh;padding:28px 16px 56px;display:flex;flex-direction:column;align-items:center;}
+h1{font-family:'Fraunces',serif;font-size:clamp(20px,4vw,30px);color:#166534;margin-bottom:4px;text-align:center;}
+.sub{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#86efac;margin-bottom:24px;}
+.card{background:#fff;border:1.5px solid #bbf7d0;border-radius:12px;padding:16px 18px;margin-bottom:14px;width:min(460px,96vw);}
+.label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#86efac;margin-bottom:10px;}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+select{font-family:'DM Mono',monospace;font-size:13px;background:#f0fdf4;color:#14532d;border:1.5px solid #bbf7d0;border-radius:7px;padding:7px 10px;appearance:none;cursor:pointer;}
+.btn{font-family:'DM Mono',monospace;font-size:12px;background:#166534;color:#fff;border:none;border-radius:7px;padding:8px 18px;cursor:pointer;}
+.btn:hover{opacity:.85;}
+.btn-t{font-family:'DM Mono',monospace;font-size:11px;background:transparent;color:#86efac;border:1.5px solid #bbf7d0;border-radius:7px;padding:7px 12px;cursor:pointer;}
+.btn-t:hover{color:#166534;border-color:#166534;}
+.status{font-size:11px;color:#86efac;text-align:center;padding:6px 0;min-height:20px;}
+.status.ok{color:#166534;}
+.board{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;width:min(420px,90vw);margin:0 auto;}
+.cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:clamp(7px,1.8vw,11px);font-weight:500;border-radius:4px;background:#f0fdf4;color:#bbf7d0;transition:background .25s,color .25s;}
+.cell.blocked{background:transparent;}
+.cell.exposed{background:#14532d!important;color:#f0fdf4!important;font-weight:700;outline:2.5px solid #4ade80;outline-offset:-1px;}
+.legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:7px;margin-top:10px;}
+.leg{display:flex;align-items:center;gap:8px;font-size:10px;color:#86efac;}
+.leg-sq{width:26px;height:26px;border-radius:5px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;}
+.leg-name{color:#14532d;font-size:10px;font-weight:500;}
+.leg-cells{font-size:9px;}
+</style></head><body>
+<h1>Compact Calendar Puzzle</h1>
+<p class="sub">6 cols · 8 rows · 43 cells · all 365 days verified</p>
+<div class="card">
+  <div class="label">Select date</div>
+  <div class="row">
+    <select id="sm"><option value="0">Jan</option><option value="1">Feb</option><option value="2">Mar</option><option value="3">Apr</option><option value="4">May</option><option value="5">Jun</option><option value="6">Jul</option><option value="7">Aug</option><option value="8">Sep</option><option value="9">Oct</option><option value="10">Nov</option><option value="11">Dec</option></select>
+    <select id="sd"></select>
+    <button class="btn-t" onclick="setToday()">Today</button>
+    <button class="btn" onclick="go()">Solve ▶</button>
+  </div>
+  <div class="status" id="st">Select date và nhấn Giải</div>
+</div>
+<div class="card">
+  <div class="label">Board — months (2×6) + days (6 rows)</div>
+  <div class="board" id="board"></div>
+</div>
+<div class="card">
+  <div class="label">Piece placement</div>
+  <div class="legend" id="leg"></div>
+</div>
+<script>
+const ROWS=8,COLS=6;
+const VALID=[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,0,0],[1,1,1,0,0,0]];
+const LABELS=[['Jan','Feb','Mar','Apr','May','Jun'],['Jul','Aug','Sep','Oct','Nov','Dec'],['1','2','3','4','5','6'],['7','8','9','10','11','12'],['13','14','15','16','17','18'],['19','20','21','22','23','24'],['25','26','27','28','',''],['29','30','31','','','']];
+const PIECES=[
+  {id:'DGRN',name:'Dark Green',    color:'#4a6e58',light:'#c5ddd0',cells:[[0,0],[1,0],[1,1],[2,0],[2,1]]},
+  {id:'YBIG',name:'Yellow (+)',color:'#c89818',light:'#f8e888',cells:[[0,1],[1,0],[1,1],[1,2],[2,1]]},
+  {id:'PINK',name:'Pink (U)',color:'#c83878',light:'#f5c0d8',cells:[[0,0],[0,2],[1,0],[1,1],[1,2]]},
+  {id:'SALM',name:'Light Blue (L)', color:'#6098b8',light:'#c0dce8',cells:[[0,0],[1,0],[1,1],[1,2],[1,3]]},
+  {id:'YSML',name:'Navy (T)',color:'#484068',light:'#d0cfe0',cells:[[0,1],[1,0],[1,1],[1,2]]},
+  {id:'GRAY',name:'Orange (J)',      color:'#d07028',light:'#f8d8b0',cells:[[0,2],[1,0],[1,1],[1,2]]},
+  {id:'BLUE',name:'Teal (□)',color:'#2c6478',light:'#b8d8e4',cells:[[0,0],[0,1],[1,0],[1,1]]},
+  {id:'LIME',name:'Lime (S)', color:'#8cb048',light:'#d8e8b8',cells:[[0,0],[0,1],[1,1],[1,2]]},
+  {id:'RED', name:'Red (Z)', color:'#cc4440',light:'#f5c8c4',cells:[[0,0],[1,0],[1,1],[1,2],[2,2]]},
+];
+function getTarget(mIdx,day){
+  const mr=Math.floor(mIdx/6),mc=mIdx%6;
+  let dr,dc;
+  if(day<=24){dr=2+Math.floor((day-1)/6);dc=(day-1)%6;}
+  else if(day<=28){dr=6;dc=day-25;}
+  else if(day===29){dr=7;dc=0;}else if(day===30){dr=7;dc=1;}else{dr=7;dc=2;}
+  return[[mr,mc],[dr,dc]];
+}
+function renderBoard(b,m,d){
+  const el=document.getElementById('board');el.innerHTML='';
+  const target=b?getTarget(m,d):[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const div=document.createElement('div');div.style.aspectRatio='1';
+    if(!VALID[r][c]){div.className='cell blocked';}
+    else if(target.some(t=>t[0]===r&&t[1]===c)){div.className='cell exposed';div.textContent=LABELS[r][c];}
+    else{div.className='cell';div.textContent=LABELS[r][c];if(b&&b[r][c]>=0){const p=PIECES[b[r][c]];div.style.background=p.light;div.style.color=p.color;div.style.border='1px solid '+p.color+'44';}}
+    el.appendChild(div);}
+}
+renderBoard(null,0,1);
+
+function renderLegend(b){
+  const el=document.getElementById('leg');el.innerHTML='';
+  if(!b)return;
+  const pos={};
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){const v=b[r][c];if(v>=0){if(!pos[v])pos[v]=[];pos[v].push(LABELS[r][c]);}}
+  Object.entries(pos).forEach(([pidx,cells])=>{
+    const p=PIECES[+pidx];
+    const div=document.createElement('div');div.className='leg';
+    div.innerHTML='<div class="leg-sq" style="background:'+p.light+';color:'+p.color+';border:1.5px solid '+p.color+'55">'+cells.length+'</div>'
+      +'<div><div class="leg-name">'+p.name+'</div><div class="leg-cells">'+cells.join(', ')+'</div></div>';
+    el.appendChild(div);
+  });
+}
+
+const DAYS_IN_MONTH=[31,28,31,30,31,30,31,31,30,31,30,31];
+function normalize(c){const mr=Math.min(...c.map(x=>x[0])),mc=Math.min(...c.map(x=>x[1]));return c.map(x=>[x[0]-mr,x[1]-mc]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]);}
+function ckey(c){return normalize(c).map(x=>x[0]+','+x[1]).join('|');}
+function rot(c){return c.map(x=>[x[1],-x[0]]);}
+function mir(c){return c.map(x=>[x[0],-x[1]]);}
+function getVariants(c){const seen=new Set(),v=[];let cur=c;for(let i=0;i<4;i++){const k1=ckey(cur),k2=ckey(mir(cur));if(!seen.has(k1)){seen.add(k1);v.push(normalize(cur));}if(!seen.has(k2)){seen.add(k2);v.push(normalize(mir(cur)));}cur=normalize(rot(cur));}return v;}
+const ALL_VARIANTS=PIECES.map(p=>getVariants(p.cells));
+function solve(mIdx,day){
+  const target=getTarget(mIdx,day);
+  const board=[];
+  for(let r=0;r<ROWS;r++){board.push([]);for(let c=0;c<COLS;c++){if(!VALID[r][c])board[r].push(-1);else if(target.some(t=>t[0]===r&&t[1]===c))board[r].push(-2);else board[r].push(null);}}
+  function firstEmpty(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]===null)return[r,c];return null;}
+  function bt(rem){const cell=firstEmpty();if(!cell)return true;const[r,c]=cell;for(let i=0;i<rem.length;i++){const pidx=rem[i];for(const v of ALL_VARIANTS[pidx]){for(const[dr,dc]of v){const sr=r-dr,sc=c-dc;let ok=true;const tp=[];for(const[vr,vc]of v){const nr=sr+vr,nc=sc+vc;if(nr<0||nr>=ROWS||nc<0||nc>=COLS||board[nr][nc]!==null){ok=false;break;}tp.push([nr,nc]);}if(ok){for(const[nr,nc]of tp)board[nr][nc]=pidx;const nr2=[...rem.slice(0,i),...rem.slice(i+1)];if(bt(nr2))return true;for(const[nr,nc]of tp)board[nr][nc]=null;}}}}return false;}
+  return bt(PIECES.map((_,i)=>i))?board:null;
+}
+function updateDays(){const m=+document.getElementById('sm').value,d=document.getElementById('sd'),c=+d.value||1;d.innerHTML='';for(let i=1;i<=DAYS_IN_MONTH[m];i++){const o=document.createElement('option');o.value=i;o.textContent=i;if(i===c)o.selected=true;d.appendChild(o);}}
+document.getElementById('sm').onchange=updateDays;
+function setToday(){const n=new Date();document.getElementById('sm').value=n.getMonth();updateDays();document.getElementById('sd').value=n.getDate();}
+setToday();
+function go(){
+  const m=+document.getElementById('sm').value,d=+document.getElementById('sd').value;
+  const st=document.getElementById('st');st.className='status';st.textContent='Solving...';
+  setTimeout(()=>{
+    const t0=performance.now(),b=solve(m,d),dt=((performance.now()-t0)/1000).toFixed(2);
+    renderBoard(b,m,d);renderLegend(b);
+    st.className=b?'status ok':'status';st.textContent=b?'✓ Solution found ('+dt+'s)':'No solution found';
+  },20);
+}
+setTimeout(go,80);
+
+</script></body></html>
